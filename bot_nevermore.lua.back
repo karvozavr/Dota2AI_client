@@ -1,0 +1,102 @@
+local lastUpdate = -1000.0
+local data = {}
+
+
+
+function creeps_info(creeps)
+    local ret = {}
+    for creep_k,creep in pairs(creeps)
+    do 
+        pos = creep:GetLocation()
+        table.insert(ret, {
+            creep:GetAttackDamage(),
+            creep:GetHealth(),
+            creep:GetMaxHealth(),
+            pos[1],
+            pos[2]
+        })
+    end
+    return ret
+end
+
+function Think()
+    local bot = GetBot()
+
+    data["test"] = {Health = bot:GetHealth(), MaxHealth = bot:GetMaxHealth()}
+    
+    if GameTime() - lastUpdate > 2.0 then
+        lastUpdate = GameTime()
+        
+        local msg = {}
+
+        if(GetTeam() == TEAM_RADIANT) then
+            msg["side"] = "Radiant"
+        else
+            msg["side"] = "Dire"
+        end
+
+        --My atk,My Hp,Hp ub,position x,position y
+        self_pos = bot:GetLocation()
+        self_input = {
+            bot:GetAttackDamage(),
+            bot:GetHealth(),
+            bot:GetMaxHealth(),
+            self_pos[1],
+            self_pos[2]
+        }
+        
+        msg["self_input"] = self_input
+
+        local EnemyCreeps = bot:GetNearbyCreeps(1000,true)
+        if(EnemyCreeps ~= nil) then
+            msg["ally_input"] = creeps_info(EnemyCreeps)
+        else
+            msg["ally_input"] = {0,0,0,0,0}
+        end
+
+        local AllyCreeps = bot:GetNearbyCreeps(1000,false)
+        if(AllyCreeps ~= nil) then
+            msg["enemy_input"] = creeps_info(AllyCreeps)
+        else
+            msg["enemy_input"] = {0,0,0,0,0}
+        end
+
+        
+        
+
+        local NearbyEnemyHeroes = bot:GetNearbyHeroes( 700, true, BOT_MODE_NONE );
+        print(NearbyEnemyHeroes)
+        msg["enemy_hero_input"] = {0,0,0,0,0}
+        if(NearbyEnemyHeroes ~= nil) then
+            for _,npcEnemy in pairs( NearbyEnemyHeroes )
+            do
+                _pos = npcEnemy:GetLocation()
+                msg["enemy_hero_input"] = {
+                    npcEnemy:GetAttackDamage(),
+                    npcEnemy:GetHealth(),
+                    npcEnemy:GetMaxHealth(),
+                    _pos[1],
+                    _pos[2]
+                }
+                break;
+            end 
+        end
+
+        msg = {["state"] = msg}
+
+
+
+        encode_msg = Json.Encode(msg)
+        print(encode_msg)
+        
+        local req = CreateHTTPRequest( ":8080" )
+        req:SetHTTPRequestRawPostBody("application/json", encode_msg)
+        req:Send( function( result )
+            print( "GET response:\n" )
+            for k,v in pairs( result ) do
+                print( string.format( "%s : %s\n", k, v ) )
+            end
+            print( "Done." )
+        end )
+    end
+end
