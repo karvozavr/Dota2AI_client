@@ -41,8 +41,8 @@ local function ConsiderAttackCreeps(StateMachine)
     --print("ConsiderAttackCreeps");
     local npcBot = GetBot();
 
-    local EnemyCreeps = npcBot:GetNearbyCreeps(1000,true);
-    local AllyCreeps = npcBot:GetNearbyCreeps(1000,false);
+    local EnemyCreeps = npcBot:GetNearbyCreeps(1600,true);
+    local AllyCreeps = npcBot:GetNearbyCreeps(1600,false);
 
     local lowest_hp = 100000;
     local weakest_creep = nil;
@@ -156,7 +156,7 @@ local function StateIdle(StateMachine)
         return;
     end
 
-    local creeps = npcBot:GetNearbyCreeps(1000,true);
+    local creeps = npcBot:GetNearbyCreeps(1600,true);
     local pt = DotaBotUtility:GetComfortPoint(creeps,LANE);
 
     if (IsBusy()) then return end;
@@ -177,8 +177,8 @@ local function StateIdle(StateMachine)
         return;
     end
     
-    local NearbyTowers = npcBot:GetNearbyTowers(1000,true);
-    local AllyCreeps = npcBot:GetNearbyCreeps(800,false);
+    local NearbyTowers = npcBot:GetNearbyTowers(1600,true);
+    local AllyCreeps = npcBot:GetNearbyCreeps(1600,false);
 
     for _,tower in pairs(NearbyTowers)
     do
@@ -195,13 +195,15 @@ local function StateIdle(StateMachine)
         end
     end
 
-    if(true) then
-        local tower = DotaBotUtility:GetFrontTowerAt(LANE);
-        npcBot:Action_MoveToLocation(tower:GetLocation());
+    local allycreeps = npcBot:GetNearbyCreeps(1600,false);
+    local allypt = DotaBotUtility:GetComfortPoint(allycreeps,LANE);
+
+    if(#allycreeps > 0 and allypt ~= nil) then
+        npcBot:Action_MoveToLocation(allypt);
         return;
     else
-        target = DotaBotUtility:GetNearBySuccessorPointOnLane(LANE);
-        npcBot:Action_MoveToLocation(target);
+        local tower = DotaBotUtility:GetFrontTowerAt(LANE);
+        npcBot:Action_MoveToLocation(tower:GetLocation());
         return;
     end
     
@@ -215,7 +217,7 @@ local function StateAttackingCreep(StateMachine)
         return;
     end
 
-    local creeps = npcBot:GetNearbyCreeps(1000,true);
+    local creeps = npcBot:GetNearbyCreeps(1600,true);
     local pt = DotaBotUtility:GetComfortPoint(creeps,LANE);
 
     if (IsBusy()) then return end;
@@ -257,7 +259,7 @@ local function StateGotoComfortPoint(StateMachine)
         return;
     end
 
-    local creeps = npcBot:GetNearbyCreeps(1000,false);
+    local creeps = npcBot:GetNearbyCreeps(1600,true);
     local pt = DotaBotUtility:GetComfortPoint(creeps,LANE);
     
     if (IsBusy()) then return end;
@@ -279,7 +281,7 @@ local function StateGotoComfortPoint(StateMachine)
         end
         return;
     else
-        StateMachine.State = STATE_RUN_AWAY;
+        StateMachine.State = STATE_IDLE;
         return;
     end
 
@@ -325,5 +327,4 @@ StateMachine[STATE_RUN_AWAY] = StateRunAway;
 
 function Think(  )
     StateMachine[StateMachine.State](StateMachine);
-    
 end

@@ -110,6 +110,7 @@ function M:GetComfortPoint(creeps,LANE)
         x_pos_sum = x_pos_sum + coefficient * creep_pos[1];
         y_pos_sum = y_pos_sum + coefficient * creep_pos[2];
         count = count + coefficient;
+        break;--nearest creep only
     end
 
     local avg_pos_x = x_pos_sum / count;

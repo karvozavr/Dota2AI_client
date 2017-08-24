@@ -13,6 +13,8 @@ end
 
 function OnStart()
     _G.state = "attack"
+    local bot = GetBot()
+    bot:Action_ClearActions(true)
 end
 
 function GetPointAtRange(distance)

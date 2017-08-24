@@ -16,6 +16,10 @@ LastDecesion = -1000
 
 LastKill = 0
 
+LastDeath = 0
+
+LastXPNeededToLevel = 0
+
 DeltaTime = 300 / 2
 
 GotOrder = false
@@ -23,6 +27,35 @@ GotOrder = false
 creep_zero_padding = {0,0,0,0,0,0,0}
 
 first = "true"
+
+punish = 0
+
+vec_delta = Vector(0,0,0)
+
+map_div  = 7000
+
+function AbilityUsageThink()
+end
+
+local npcBot = GetBot()
+
+local raze1 = npcBot:GetAbilityByName("nevermore_shadowraze1")
+if raze1:IsFullyCastable() and CheckRaze(200) then
+        npcBot:Action_UseAbility(raze1)
+        return
+end
+
+local raze2 = npcBot:GetAbilityByName("nevermore_shadowraze2")
+if raze2:IsFullyCastable() and CheckRaze(450) then
+    npcBot:Action_UseAbility(raze2)
+    return
+end
+
+local raze3 = npcBot:GetAbilityByName("nevermore_shadowraze3")
+if raze3:IsFullyCastable() and CheckRaze(700) then
+    npcBot:Action_UseAbility(raze3)
+    return
+end
 
 
 function creeps_info(creeps)
@@ -36,8 +69,8 @@ function creeps_info(creeps)
             creep:GetMaxHealth(),
             creep:GetArmor(),
             creep:GetAttackRange(),
-            pos[1],
-            pos[2]
+            pos[1] / map_div,
+            pos[2] / map_div
         })
     end
     return ret
@@ -56,6 +89,21 @@ function Loop(reward)
         msg["side"] = "Dire"
     end
 
+    local raze1_dmg = 0
+    if raze1:IsFullyCastable() then
+        raze1_dmg = raze1:GetAbilityDamage()
+    end
+
+    local raze2_dmg = 0
+    if raze2:IsFullyCastable() then
+        raze2_dmg = raze2:GetAbilityDamage()
+    end
+
+    local raze3_dmg = 0
+    if raze3:IsFullyCastable() then
+        raze3_dmg = raze3:GetAbilityDamage()
+    end
+
     --My atk,My Hp,Hp ub,position x,position y
     self_pos = bot:GetLocation()
     self_input = {
@@ -66,8 +114,12 @@ function Loop(reward)
         bot:GetMaxHealth(),
         bot:GetMana(),
         bot:GetMaxMana(),
-        self_pos[1],
-        self_pos[2]
+        bot:GetFacing(),
+        raze1_dmg,
+        raze2_dmg,
+        raze3_dmg,
+        self_pos[1] / map_div,
+        self_pos[2] / map_div
     }
         
     msg["self_input"] = self_input
@@ -95,7 +147,7 @@ function Loop(reward)
         enemyBot = enemyBotTbl[1]
     end
 
-    msg["enemy_hero_input"] = {0,0,0,0,0,0,0,0,0}
+    msg["enemy_hero_input"] = {0,0,0,0,0,0,0,0,0,0}
     if(enemyBot ~= nil) then
         enemypos = enemyBot:GetLocation()
         msg["enemy_hero_input"] = {
@@ -106,8 +158,9 @@ function Loop(reward)
             enemyBot:GetMaxHealth(),
             enemyBot:GetMana(),
             enemyBot:GetMaxMana(),
-            enemypos[1],
-            enemypos[2]
+            enemyBot:GetFacing(),
+            enemypos[1] / map_div,
+            enemypos[2] / map_div
         }
     end
 
@@ -120,19 +173,32 @@ function Loop(reward)
 
 
     encode_msg = Json.Encode(msg)
-        
+    local npcBot = GetBot()
+    local loc = npcBot:GetLocation()
     local req = CreateHTTPRequest( ":8080" )
     req:SetHTTPRequestRawPostBody("application/json", encode_msg)
     req:Send( function( result )
-        print( "GET response:\n" )
         for k,v in pairs( result ) do
             if k == "Body" then
-                ApplyOrder(v)
+                
+                --ApplyOrder(v)
                 print( string.format( "%s : %s\n", k, v ) )
+                
+                local idx=1
+                for substring in string.gmatch( v,"[^%s]+" ) do
+                    vec_delta[idx] = tonumber(substring)
+                    idx = idx + 1
+                end
+                
             end
             
         end
     end )
+    print(loc,vec_delta)
+    loc[1] = loc[1] + vec_delta[1]
+    loc[2] = loc[2] + vec_delta[2]
+    npcBot:Action_MoveToLocation(loc)
+    
 end
 
 local function ClipTime(t)
@@ -151,7 +217,11 @@ function OutputToConsole()
     if enemyBotTbl ~= nil then
         enemyBot = enemyBotTbl[1]
     end
-    local MyKill = GetHeroKills(npcBot:GetPlayerID())
+
+    local myid = npcBot:GetPlayerID()
+
+    local MyKill = GetHeroKills(myid)
+    local MyDeath = GetHeroDeaths(myid)
 
     if(enemyBot ~= nil) then 
         npcBot:SetTarget(enemyBot)
@@ -167,6 +237,14 @@ function OutputToConsole()
 
     if npcBot:GetGold() - MyLastGold > 5 then
         GoldReward = (npcBot:GetGold() - MyLastGold)
+    end
+
+    local _XPNeededToLevel = npcBot:GetXPNeededToLevel()
+
+    local XPreward = 0
+
+    if _XPNeededToLevel < LastXPNeededToLevel then
+        XPreward = LastXPNeededToLevel - _XPNeededToLevel
     end
 
     if MyLastHP == nil then
@@ -256,11 +334,46 @@ function OutputToConsole()
         BotTeam = -1
     end
 
-    local Reward = (npcBot:GetHealth() - MyLastHP)
-    - (EnemyHP - LastEnemyHP) * 10
-    + (MyKill - LastKill) * 10000
-    + GoldReward
+    if npcBot:DistanceFromFountain() == 0 and npcBot:GetHealth() == npcBot:GetMaxHealth() then
+        punish = punish + 5
+    end
 
+    local EnemyHPReward = 0
+    if (EnemyHP - LastEnemyHP) < 0 then
+        EnemyHPReward = (EnemyHP - LastEnemyHP)-- * 2
+    end
+
+    local dist2line = PointToLineDistance(Vector(8000,8000),Vector(-8000,-8000),MyLocation)["distance"]
+
+    local distance2mid = math.sqrt(MyLocation[1]*MyLocation[1] + MyLocation[2] * MyLocation[2])
+        + dist2line * 2
+    
+    print("dist2line",dist2line)
+
+    --[[
+    local __a = PointToLineDistance(Vector(7000,7000,0),Vector(-7000,-7000,0),MyLocation)
+    for k,v in pairs(__a) do
+        print("distane to mid lane",k,v)
+    end
+    ]]
+    
+    
+
+    if MyLastDistance2mid == nil then
+        MyLastDistance2mid = distance2mid
+    end
+
+    local Reward = (npcBot:GetHealth() - MyLastHP)
+    --- EnemyHPReward
+    --+ (MyKill - LastKill) * 100
+    - (MyDeath - LastDeath) * 100
+    --+ GoldReward
+    + XPreward
+    --- punish
+    - (MyLastDistance2mid - distance2mid) / 100.0
+    - 0.5
+
+    print(Reward)
     Loop(Reward)
 
 
@@ -277,6 +390,10 @@ function OutputToConsole()
     LastDistanceToEnemy = DistanceToEnemy
     LastEnemyLocation = EnemyLocation
     LastKill = MyKill
+    LastDeath = MyDeath
+    LastXPNeededToLevel = _XPNeededToLevel
+    MyLastDistance2mid = distance2mid
+    punish = 0
 end
 
 LastTimeOutput = DotaTime()
@@ -289,6 +406,14 @@ function ApplyOrder(s)
     if action == 0 then
         _G.LaningDesire = 1.0
     elseif action == 1 then
+        local enemyBotTbl = GetUnitList(UNIT_LIST_ENEMY_HEROES)
+        local enemyBot = nil
+        if enemyBotTbl ~= nil then
+            enemyBot = enemyBotTbl[1]
+        end
+        if enemyBot == nil or GetUnitToUnitDistance(enemyBot,GetBot()) > 1600 then
+            punish = punish + 20
+        end
         _G.AttackDesire = 1.0
     elseif action == 2 then
         _G.RetreatDesire = 1.0
@@ -298,12 +423,14 @@ end
 
 LastTimeApplyOrder = DotaTime()
 
-function BuybackUsageThink()
+function Think()
+    local _time = DotaTime()
     if (GetGameState() == GAME_STATE_GAME_IN_PROGRESS or GetGameState() == GAME_STATE_PRE_GAME) then
         --print(math.abs(DotaTime() - LastTimeOutput))
-        if math.abs(DotaTime() - LastTimeOutput) > 0.5 then
+        
+        if math.abs(_time - LastTimeOutput) > 2 then
             OutputToConsole()
-            LastTimeOutput = DotaTime()
+            LastTimeOutput = _time
         end
     end
 end
