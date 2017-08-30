@@ -34,6 +34,10 @@ vec_delta = Vector(0,0,0)
 
 map_div  = 7000
 
+msg_done = false
+
+seq_num = 0
+
 function AbilityUsageThink()
 end
 
@@ -72,6 +76,9 @@ function creeps_info(creeps)
             pos[1] / map_div,
             pos[2] / map_div
         })
+    end
+    if #ret == 0 then
+        table.insert(ret,creep_zero_padding)
     end
     return ret
 end
@@ -164,9 +171,20 @@ function Loop(reward)
         }
     end
 
-    
+    local _end = "false"
 
-    msg = {["state"] = msg,["reward"] = reward,["first"] = first}
+    if GetGameState() == GAME_STATE_POST_GAME then
+        _end = "true"
+        print("done!!!!!!!!!!!!")
+    end
+
+    msg = {["state"] = msg,
+           ["reward"] = reward,
+           ["first"] = first,
+           ["done"] = _end,
+           ["seq_num"] = seq_num}
+
+    seq_num = seq_num + 1
 
     first = "false"
 
@@ -189,11 +207,12 @@ function Loop(reward)
                     vec_delta[idx] = tonumber(substring)
                     idx = idx + 1
                 end
-                
+
             end
             
         end
     end )
+    
     print(loc,vec_delta)
     loc[1] = loc[1] + vec_delta[1]
     loc[2] = loc[2] + vec_delta[2]
@@ -345,8 +364,9 @@ function OutputToConsole()
 
     local dist2line = PointToLineDistance(Vector(8000,8000),Vector(-8000,-8000),MyLocation)["distance"]
 
-    local distance2mid = math.sqrt(MyLocation[1]*MyLocation[1] + MyLocation[2] * MyLocation[2])
-        + dist2line * 2
+    local distance2mid = 0.1 * math.sqrt(MyLocation[1]*MyLocation[1] + MyLocation[2] * MyLocation[2])
+        + dist2line
+    --local distance2mid = dist2line
     
     print("dist2line",dist2line)
 
@@ -363,15 +383,15 @@ function OutputToConsole()
         MyLastDistance2mid = distance2mid
     end
 
-    local Reward = (npcBot:GetHealth() - MyLastHP)
+    local Reward = (npcBot:GetHealth() - MyLastHP) / 10.0
     --- EnemyHPReward
     --+ (MyKill - LastKill) * 100
     - (MyDeath - LastDeath) * 100
     --+ GoldReward
-    + XPreward
+    + XPreward / 10.0
     --- punish
     - (MyLastDistance2mid - distance2mid) / 100.0
-    - 0.5
+    -0.01
 
     print(Reward)
     Loop(Reward)
@@ -425,10 +445,10 @@ LastTimeApplyOrder = DotaTime()
 
 function Think()
     local _time = DotaTime()
-    if (GetGameState() == GAME_STATE_GAME_IN_PROGRESS or GetGameState() == GAME_STATE_PRE_GAME) then
+    if (GetGameState() == GAME_STATE_GAME_IN_PROGRESS or GetGameState() == GAME_STATE_PRE_GAME or GetGameState() == GAME_STATE_POST_GAME) then
         --print(math.abs(DotaTime() - LastTimeOutput))
         
-        if math.abs(_time - LastTimeOutput) > 2 then
+        if math.abs(_time - LastTimeOutput) > 1 then
             OutputToConsole()
             LastTimeOutput = _time
         end
