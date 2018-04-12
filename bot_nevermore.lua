@@ -4,6 +4,9 @@ local Constant = require(GetScriptDirectory().."/dev/constant_each_side")
 local DotaBotUtility = require(GetScriptDirectory().."/utility")
 require(GetScriptDirectory().."/util/json")
 
+-- You have to use: luarocks-5.1 install lua-requests 
+-- But you cant!!! DotA lua VM doesn't support any builtin features.
+--Request = require "requests"
 
 LastEnemyHP = 1000
 
@@ -38,29 +41,11 @@ msg_done = false
 
 seq_num = 0
 
-function AbilityUsageThink()
-end
-
 local npcBot = GetBot()
 
 local raze1 = npcBot:GetAbilityByName("nevermore_shadowraze1")
-if raze1:IsFullyCastable() and CheckRaze(200) then
-        npcBot:Action_UseAbility(raze1)
-        return
-end
-
 local raze2 = npcBot:GetAbilityByName("nevermore_shadowraze2")
-if raze2:IsFullyCastable() and CheckRaze(450) then
-    npcBot:Action_UseAbility(raze2)
-    return
-end
-
 local raze3 = npcBot:GetAbilityByName("nevermore_shadowraze3")
-if raze3:IsFullyCastable() and CheckRaze(700) then
-    npcBot:Action_UseAbility(raze3)
-    return
-end
-
 
 function creeps_info(creeps)
     local ret = {}
@@ -143,10 +128,7 @@ function Loop(reward)
         msg["enemy_input"] = creeps_info(AllyCreeps)
     else
         msg["enemy_input"] = creep_zero_padding
-    end
-
-        
-        
+    end        
 
     local enemyBotTbl = GetUnitList(UNIT_LIST_ENEMY_HEROES)
     local enemyBot = nil
@@ -175,7 +157,7 @@ function Loop(reward)
 
     if GetGameState() == GAME_STATE_POST_GAME then
         _end = "true"
-        print("done!!!!!!!!!!!!")
+        print("Bot: the game has ended.")
     end
 
     msg = {["state"] = msg,
@@ -191,33 +173,47 @@ function Loop(reward)
 
 
     encode_msg = Json.Encode(msg)
+    send_state_message(encode_msg)
+
     local npcBot = GetBot()
     local loc = npcBot:GetLocation()
-    local req = CreateHTTPRequest( ":8080" )
-    req:SetHTTPRequestRawPostBody("application/json", encode_msg)
-    req:Send( function( result )
-        for k,v in pairs( result ) do
-            if k == "Body" then
-                
-                --ApplyOrder(v)
-                print( string.format( "%s : %s\n", k, v ) )
-                
-                local idx=1
-                for substring in string.gmatch( v,"[^%s]+" ) do
-                    vec_delta[idx] = tonumber(substring)
-                    idx = idx + 1
-                end
 
-            end
-            
-        end
-    end )
-    
     print(loc,vec_delta)
     loc[1] = loc[1] + vec_delta[1]
     loc[2] = loc[2] + vec_delta[2]
     npcBot:Action_MoveToLocation(loc)
     
+end
+
+-- Send JSON with current state info.
+-- @param message JSON state info
+function send_state_message(message)
+        
+
+    local req = CreateHTTPRequest(':5000')
+    req:SetHTTPRequestRawPostBody('application/json', message)
+    req:Send( 
+        function(result)
+            for k, v in pairs( result ) do
+                if k == 'Body' then
+                    print( string.format( "%s : %s\n", k, v ) )
+                    action_recieved(Json.Decode(v))
+                end 
+            end
+        end
+    )
+end
+
+local current_action = nil
+local action_ready = false
+
+-- On action recieved callback.
+-- @param action new action
+function action_recieved(action)
+    print('action_recieved event', action['test2'])
+
+    current_action = action
+    action_ready = true
 end
 
 local function ClipTime(t)
@@ -229,7 +225,7 @@ local function ClipTime(t)
     end
 end
 
-function OutputToConsole()
+function process_environment_state()
     local npcBot = GetBot()
     local enemyBotTbl = GetUnitList(UNIT_LIST_ENEMY_HEROES)
     local enemyBot = nil
@@ -368,16 +364,14 @@ function OutputToConsole()
         + dist2line
     --local distance2mid = dist2line
     
-    print("dist2line",dist2line)
+    print("dist2line", dist2line)
 
     --[[
     local __a = PointToLineDistance(Vector(7000,7000,0),Vector(-7000,-7000,0),MyLocation)
     for k,v in pairs(__a) do
         print("distane to mid lane",k,v)
     end
-    ]]
-    
-    
+    ]]    
 
     if MyLastDistance2mid == nil then
         MyLastDistance2mid = distance2mid
@@ -385,9 +379,9 @@ function OutputToConsole()
 
     local Reward = (npcBot:GetHealth() - MyLastHP) / 10.0
     --- EnemyHPReward
-    --+ (MyKill - LastKill) * 100
+    -- + (MyKill - LastKill) * 100
     - (MyDeath - LastDeath) * 100
-    --+ GoldReward
+    -- + GoldReward
     + XPreward / 10.0
     --- punish
     - (MyLastDistance2mid - distance2mid) / 100.0
@@ -395,7 +389,6 @@ function OutputToConsole()
 
     print(Reward)
     Loop(Reward)
-
 
     if enemyTower:GetHealth() > 0 then
         LastEnemyTowerHP = enemyTower:GetHealth()
@@ -418,27 +411,32 @@ end
 
 LastTimeOutput = DotaTime()
 
-function ApplyOrder(s)
-    local action = tonumber(s)
-    _G.LaningDesire = 0.0
-    _G.AttackDesire = 0.0
-    _G.RetreatDesire = 0.0
-    if action == 0 then
-        _G.LaningDesire = 1.0
-    elseif action == 1 then
-        local enemyBotTbl = GetUnitList(UNIT_LIST_ENEMY_HEROES)
-        local enemyBot = nil
-        if enemyBotTbl ~= nil then
-            enemyBot = enemyBotTbl[1]
-        end
-        if enemyBot == nil or GetUnitToUnitDistance(enemyBot,GetBot()) > 1600 then
-            punish = punish + 20
-        end
-        _G.AttackDesire = 1.0
-    elseif action == 2 then
-        _G.RetreatDesire = 1.0
-    end
-    print("Apply Order",s)
+function execute_action(action)
+    -- local action = tonumber(s)
+    -- _G.LaningDesire = 0.0
+    -- _G.AttackDesire = 0.0
+    -- _G.RetreatDesire = 0.0
+    -- if action == 0 then
+    --     _G.LaningDesire = 1.0
+    -- elseif action == 1 then
+    --     local enemyBotTbl = GetUnitList(UNIT_LIST_ENEMY_HEROES)
+    --     local enemyBot = nil
+    --     if enemyBotTbl ~= nil then
+    --         enemyBot = enemyBotTbl[1]
+    --     end
+    --     if enemyBot == nil or GetUnitToUnitDistance(enemyBot,GetBot()) > 1600 then
+    --         punish = punish + 20
+    --     end
+    --     _G.AttackDesire = 1.0
+    -- elseif action == 2 then
+    --     _G.RetreatDesire = 1.0
+    -- end
+
+    -- local thisBot = GetBot()
+    -- thisBot:Action_MoveToLocation(  Vector(42, 22) )
+
+    print("Execute action.", action)
+    action_ready = false
 end
 
 LastTimeApplyOrder = DotaTime()
@@ -447,10 +445,11 @@ function Think()
     local _time = DotaTime()
     if (GetGameState() == GAME_STATE_GAME_IN_PROGRESS or GetGameState() == GAME_STATE_PRE_GAME or GetGameState() == GAME_STATE_POST_GAME) then
         --print(math.abs(DotaTime() - LastTimeOutput))
-        
-        if math.abs(_time - LastTimeOutput) > 1 then
-            OutputToConsole()
-            LastTimeOutput = _time
+
+        if action_ready == true then
+            execute_action(current_action)
+        else 
+            process_environment_state()
         end
     end
 end
