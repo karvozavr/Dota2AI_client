@@ -435,6 +435,7 @@ function execute_action(action)
     -- local thisBot = GetBot()
     -- thisBot:Action_MoveToLocation(  Vector(42, 22) )
 
+    npcBot:ActionQueue_MoveToLocation(RandomVector(42.0))
     print("Execute action.", action)
     action_ready = false
 end
